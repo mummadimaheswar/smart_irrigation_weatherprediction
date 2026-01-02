@@ -38,106 +38,116 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
+# Custom CSS - Black, White, Blue theme
 st.markdown("""
 <style>
+    /* Global theme */
+    .stApp {
+        background-color: #000000;
+        color: #ffffff;
+    }
     .main-header {
         font-size: 2.5rem;
-        color: #1B5E20;
+        color: #2196F3;
         text-align: center;
         margin-bottom: 0.5rem;
         font-weight: bold;
     }
     .sub-header {
         text-align: center;
-        color: #666;
+        color: #ffffff;
         margin-bottom: 2rem;
         font-size: 1.1rem;
     }
     .decision-execute {
-        background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+        background: #1565C0;
         padding: 1.5rem;
         border-radius: 15px;
-        color: white;
+        color: #ffffff;
         text-align: center;
         font-size: 1.5rem;
         font-weight: bold;
-        box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+        box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
     }
     .decision-defer {
-        background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+        background: #1976D2;
         padding: 1.5rem;
         border-radius: 15px;
-        color: white;
+        color: #ffffff;
         text-align: center;
         font-size: 1.5rem;
         font-weight: bold;
-        box-shadow: 0 4px 15px rgba(255, 152, 0, 0.4);
+        box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
     }
     .decision-skip {
-        background: linear-gradient(135deg, #2196F3 0%, #1565C0 100%);
+        background: #2196F3;
         padding: 1.5rem;
         border-radius: 15px;
-        color: white;
+        color: #ffffff;
         text-align: center;
         font-size: 1.5rem;
         font-weight: bold;
         box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
     }
     .decision-override {
-        background: linear-gradient(135deg, #f44336 0%, #c62828 100%);
+        background: #0D47A1;
         padding: 1.5rem;
         border-radius: 15px;
-        color: white;
+        color: #ffffff;
         text-align: center;
         font-size: 1.5rem;
         font-weight: bold;
-        box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4);
+        box-shadow: 0 4px 15px rgba(33, 150, 243, 0.4);
     }
     .metric-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: #1565C0;
         padding: 1rem;
         border-radius: 10px;
-        color: white;
+        color: #ffffff;
         text-align: center;
     }
     .crop-card {
-        background: #f8f9fa;
+        background: #111111;
         padding: 1rem;
         border-radius: 10px;
-        border-left: 4px solid #4CAF50;
+        border-left: 4px solid #2196F3;
         margin: 0.5rem 0;
+        color: #ffffff;
     }
     .guidance-card {
-        background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+        background: #111111;
         padding: 1.5rem;
         border-radius: 15px;
         margin: 1rem 0;
+        border: 1px solid #2196F3;
+        color: #ffffff;
     }
     .trigger-card {
-        background: #fff3e0;
+        background: #111111;
         padding: 0.75rem 1rem;
         border-radius: 8px;
-        border-left: 4px solid #FF9800;
+        border-left: 4px solid #2196F3;
         margin: 0.5rem 0;
+        color: #ffffff;
     }
     .risk-card {
-        background: #ffebee;
+        background: #111111;
         padding: 0.75rem 1rem;
         border-radius: 8px;
-        border-left: 4px solid #f44336;
+        border-left: 4px solid #1565C0;
         margin: 0.5rem 0;
+        color: #ffffff;
     }
     .chat-wrapper {
-        background: #ffffff;
+        background: #111111;
         border-radius: 12px;
         padding: 1.5rem;
         margin: 1rem 0;
-        border: 1px solid #e5e5e5;
+        border: 1px solid #2196F3;
     }
     .chat-header {
-        background: #343541;
-        color: white;
+        background: #1565C0;
+        color: #ffffff;
         padding: 0.75rem 1rem;
         border-radius: 8px;
         margin-bottom: 1rem;
@@ -145,8 +155,8 @@ st.markdown("""
         font-weight: bold;
     }
     .chat-user {
-        background: #343541;
-        color: white;
+        background: #1976D2;
+        color: #ffffff;
         padding: 0.75rem 1rem;
         border-radius: 8px;
         margin: 0.75rem 0;
@@ -154,28 +164,81 @@ st.markdown("""
         font-size: 0.95rem;
     }
     .chat-ai {
-        background: #f7f7f8;
-        color: #343541;
+        background: #111111;
+        color: #ffffff;
         padding: 1rem;
         border-radius: 8px;
         margin: 0.75rem 0;
-        border-left: 3px solid #10a37f;
+        border-left: 3px solid #2196F3;
         font-size: 0.95rem;
         line-height: 1.6;
     }
     .chat-ai strong, .chat-ai b {
-        color: #343541;
+        color: #2196F3;
         font-weight: 600;
     }
     .sensor-box {
-        background: #f0f7f0;
+        background: #111111;
         padding: 0.5rem;
         border-radius: 8px;
         text-align: center;
-        border: 1px solid #c8e6c9;
+        border: 1px solid #2196F3;
+        color: #ffffff;
     }
     .stProgress > div > div > div > div {
-        background: linear-gradient(90deg, #4CAF50, #8BC34A);
+        background: linear-gradient(90deg, #1565C0, #2196F3);
+    }
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #111111;
+    }
+    [data-testid="stSidebar"] * {
+        color: #ffffff !important;
+    }
+    /* Headers */
+    h1, h2, h3, h4, h5, h6 {
+        color: #2196F3 !important;
+    }
+    /* Labels and text */
+    label, .stMarkdown, p, span {
+        color: #ffffff !important;
+    }
+    /* Selectbox and input styling */
+    .stSelectbox > div > div, .stTextInput > div > div > input, .stNumberInput > div > div > input {
+        background-color: #111111 !important;
+        color: #ffffff !important;
+        border: 1px solid #2196F3 !important;
+    }
+    /* Buttons */
+    .stButton > button {
+        background-color: #1565C0 !important;
+        color: #ffffff !important;
+        border: none !important;
+    }
+    .stButton > button:hover {
+        background-color: #2196F3 !important;
+    }
+    /* Expander */
+    .streamlit-expanderHeader {
+        background-color: #111111 !important;
+        color: #2196F3 !important;
+    }
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #000000;
+    }
+    .stTabs [data-baseweb="tab"] {
+        color: #ffffff !important;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1565C0 !important;
+    }
+    /* Metrics */
+    [data-testid="stMetricValue"] {
+        color: #2196F3 !important;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #ffffff !important;
     }
 </style>
 """, unsafe_allow_html=True)
