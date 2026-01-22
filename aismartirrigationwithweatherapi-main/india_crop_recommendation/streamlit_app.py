@@ -570,6 +570,134 @@ with tab1:
                 st.success("🟢 Optimal: Good moisture level")
             else:
                 st.info("🔵 High: Monitor drainage")
+    
+    # ═══════════════════════════════════════════════════════════════════════════
+    # LIVE WEATHER & IRRIGATION PREDICTION SECTION
+    # ═══════════════════════════════════════════════════════════════════════════
+    
+    st.markdown("---")
+    st.subheader("🌦️ Live Weather & Irrigation Prediction")
+    
+    # Location selector
+    loc_col1, loc_col2, loc_col3 = st.columns([1, 1, 1])
+    
+    with loc_col1:
+        weather_state = st.selectbox("🏛️ State", INDIAN_STATES, index=3, key="weather_state_iot")
+    
+    with loc_col2:
+        weather_city = st.text_input("🏘️ City/District", placeholder="e.g., Pune, Mumbai", key="weather_city_iot")
+    
+    with loc_col3:
+        crop_for_prediction = st.selectbox("🌾 Crop Type", list(CROP_RULES.keys()), key="crop_iot")
+    
+    # Weather and Prediction columns
+    weather_col1, weather_col2, weather_col3 = st.columns([1, 1, 1])
+    
+    with weather_col1:
+        if st.button("🌦️ Fetch Weather & Predict", type="primary", use_container_width=True, key="fetch_weather_iot"):
+            api_key = st.session_state.weather_api_key
+            if not api_key:
+                st.error("⚠️ Please set Weather API Key in the sidebar!")
+            else:
+                with st.spinner(f"Fetching weather..."):
+                    city = weather_city if weather_city else weather_state
+                    weather_data = fetch_weather(city, api_key)
+                    
+                    if weather_data:
+                        st.session_state.iot_live_weather = weather_data
+                        st.session_state.iot_weather_fetched = True
+                        st.success(f"✅ Weather fetched for {weather_data.get('city', city)}")
+                    else:
+                        st.error("❌ Failed to fetch weather. Check API key.")
+    
+    with weather_col2:
+        st.markdown("##### 🌤️ Current Weather")
+        
+        if st.session_state.get('iot_weather_fetched') and 'iot_live_weather' in st.session_state:
+            weather = st.session_state.iot_live_weather
+            
+            wcol1, wcol2 = st.columns(2)
+            with wcol1:
+                st.metric("🌡️ Temperature", f"{weather.get('temp', 'N/A')}°C")
+                st.metric("💨 Condition", weather.get('description', 'N/A').title())
+            with wcol2:
+                st.metric("💧 Humidity", f"{weather.get('humidity', 'N/A')}%")
+                st.metric("📍 Location", weather.get('city', 'N/A'))
+        else:
+            st.info("👆 Click 'Fetch Weather & Predict' to load live weather data")
+    
+    with weather_col3:
+        st.markdown("##### 🚿 Irrigation Prediction")
+        
+        sensor_vals_pred = [v for v in st.session_state.sensor_values if v > 0]
+        
+        if st.session_state.get('iot_weather_fetched') and 'iot_live_weather' in st.session_state and len(sensor_vals_pred) >= 5:
+            weather = st.session_state.iot_live_weather
+            avg_moisture = sum(sensor_vals_pred) / len(sensor_vals_pred)
+            temp = weather.get('temp', 25)
+            humidity = weather.get('humidity', 50)
+            
+            # Get crop rules
+            crop_rules = CROP_RULES.get(crop_for_prediction, {"sm_min": 20, "sm_max": 50})
+            optimal_sm = (crop_rules["sm_min"] + crop_rules["sm_max"]) / 2
+            
+            # Calculate irrigation need score
+            moisture_deficit = optimal_sm - avg_moisture
+            evapotranspiration_factor = (temp / 30) * (1 - humidity / 100)
+            irrigation_score = moisture_deficit + (evapotranspiration_factor * 10)
+            
+            # Determine action
+            if avg_moisture < crop_rules["sm_min"] * 0.7:
+                action = "🔴 URGENT: Irrigate Immediately"
+                action_type = "error"
+                volume = max(20, min(50, moisture_deficit * 2))
+            elif avg_moisture < crop_rules["sm_min"]:
+                action = "🟠 EXECUTE: Irrigation Recommended"
+                action_type = "warning"
+                volume = max(10, min(30, moisture_deficit * 1.5))
+            elif irrigation_score > 10:
+                action = "🟡 DEFER: High evaporation, monitor"
+                action_type = "warning"
+                volume = max(5, min(20, moisture_deficit))
+            elif avg_moisture > crop_rules["sm_max"]:
+                action = "🔵 SKIP: Soil saturated, no irrigation"
+                action_type = "info"
+                volume = 0
+            else:
+                action = "🟢 OPTIMAL: No irrigation needed"
+                action_type = "success"
+                volume = 0
+            
+            # Display prediction
+            if action_type == "error":
+                st.error(action)
+            elif action_type == "warning":
+                st.warning(action)
+            elif action_type == "info":
+                st.info(action)
+            else:
+                st.success(action)
+            
+            st.metric("📊 Avg Soil Moisture", f"{avg_moisture:.1f}%")
+            st.metric(f"🎯 Optimal for {crop_for_prediction.title()}", f"{crop_rules['sm_min']}-{crop_rules['sm_max']}%")
+            
+            if volume > 0:
+                st.metric("💧 Recommended Volume", f"{volume:.0f} mm")
+            
+            # Detailed reasoning
+            with st.expander("📋 Prediction Details"):
+                st.write(f"**Crop:** {crop_for_prediction.title()}")
+                st.write(f"**Soil Moisture:** {avg_moisture:.1f}% (Need: {crop_rules['sm_min']}-{crop_rules['sm_max']}%)")
+                st.write(f"**Temperature:** {temp}°C")
+                st.write(f"**Humidity:** {humidity}%")
+                st.write(f"**Moisture Deficit:** {moisture_deficit:.1f}%")
+                st.write(f"**ET Factor:** {evapotranspiration_factor:.2f}")
+                st.write(f"**Decision Score:** {irrigation_score:.1f}")
+        
+        elif len(sensor_vals_pred) < 5:
+            st.warning("⚠️ Need at least 5 sensor readings for prediction")
+        else:
+            st.info("👆 Fetch weather first to get irrigation prediction")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # TAB 2: DECISION ENGINE
