@@ -1,6 +1,38 @@
 # 🌾 India Crop Recommendation System
 
-AI-powered crop recommendation system for Indian agriculture using soil moisture sensors (manual entry), weather data, and machine learning.
+AI-powered crop recommendation system for Indian agriculture using soil moisture sensors (manual entry), weather data, machine learning, and **RAG (Retrieval-Augmented Generation)** for intelligent document-based Q&A.
+
+## 🆕 RAG Knowledge Base Features
+
+The system now includes a powerful RAG (Retrieval-Augmented Generation) system that enables:
+
+### Document Upload & Processing
+- **Supported Formats**: PDF, TXT, CSV, JSON, Markdown
+- **Automatic Chunking**: Documents are split into semantic chunks with overlap
+- **Embedding Generation**: TF-IDF based embeddings for semantic search
+- **Metadata Tagging**: Add state, crop, category, source for filtering
+
+### Hybrid Search
+- **Semantic Search**: Find contextually similar content using embeddings
+- **Keyword Search (BM25)**: Match exact terms for precise queries
+- **Metadata Filtering**: Filter by state, crop, category, date range
+- **Hybrid Retrieval**: Combine semantic + keyword for best results
+
+### RAG-Enhanced Chat
+- Queries the knowledge base for relevant context
+- Augments LLM prompts with retrieved information
+- Provides source citations with confidence scores
+- Falls back to general knowledge when no relevant documents exist
+
+### API Endpoints
+```
+POST /rag/upload       - Upload documents to knowledge base
+POST /rag/query        - Search with hybrid retrieval
+POST /rag/chat         - RAG-enhanced chat with LLM
+GET  /rag/documents    - List all documents
+DELETE /rag/documents/{id} - Remove a document
+GET  /rag/stats        - Knowledge base statistics
+```
 
 ## 📐 Architecture
 

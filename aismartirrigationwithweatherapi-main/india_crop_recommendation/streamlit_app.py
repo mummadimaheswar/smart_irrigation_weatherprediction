@@ -468,30 +468,252 @@ with st.sidebar:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown('<h1 class="main-header">🌾 India Crop Recommendation System</h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">AI-powered crop recommendations with 20 sensor inputs & Grok chatbot</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-header">AI-powered crop recommendations with 20 sensor inputs, RAG Knowledge Base & Grok chatbot</p>', unsafe_allow_html=True)
 
-# Create tabs
-tab1, tab2, tab3 = st.tabs(["🎯 Recommendations", "🤖 AI Chatbot", "📊 Data Analysis"])
+# Create tabs - 6 tabs total
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    "📡 IoT Sensor Data",
+    "🚀 Decision Engine", 
+    "🎯 Crop Recommendations", 
+    "🤖 AI Chatbot", 
+    "📚 RAG Knowledge Base",
+    "📊 Data Analysis"
+])
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 1: RECOMMENDATIONS
+# TAB 1: IoT SENSOR DATA
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab1:
+    st.subheader("📡 20-Point IoT Soil Moisture Sensor Network")
+    st.caption("Configure soil moisture readings from your IoT sensor network at 15cm depth")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("##### Quick Actions")
+        action_col1, action_col2, action_col3, action_col4 = st.columns(4)
+        
+        with action_col1:
+            state_for_sample = st.selectbox("Load State Data", ["Select..."] + INDIAN_STATES, key="sample_state_iot")
+        
+        with action_col2:
+            if st.button("📊 Load Sample", use_container_width=True, key="load_sample_iot"):
+                if state_for_sample != "Select..." and state_for_sample in SAMPLE_DATA:
+                    st.session_state.sensor_values = SAMPLE_DATA[state_for_sample].copy()
+                    st.rerun()
+        
+        with action_col3:
+            if st.button("🎲 Random Generate", use_container_width=True, key="random_iot"):
+                import random
+                st.session_state.sensor_values = [round(random.uniform(10, 35), 1) for _ in range(20)]
+                st.rerun()
+        
+        with action_col4:
+            if st.button("🗑️ Clear All", use_container_width=True, key="clear_iot"):
+                st.session_state.sensor_values = [0.0] * 20
+                st.rerun()
+        
+        st.markdown("---")
+        st.markdown("##### Manual Sensor Entry (20 Sensors)")
+        st.caption("Enter soil moisture % for each sensor location")
+        
+        for row in range(5):
+            cols = st.columns(4)
+            for col_idx in range(4):
+                sensor_idx = row * 4 + col_idx
+                with cols[col_idx]:
+                    st.session_state.sensor_values[sensor_idx] = st.number_input(
+                        f"Sensor {sensor_idx + 1}",
+                        value=float(st.session_state.sensor_values[sensor_idx]),
+                        min_value=0.0,
+                        max_value=100.0,
+                        step=0.1,
+                        key=f"sensor_iot_{sensor_idx}"
+                    )
+    
+    with col2:
+        st.markdown("##### 🗺️ Sensor Field Layout (4x5 Grid)")
+        st.caption("🟢 ≥20% Optimal  |  🟠 10-19% Low  |  🔴 <10% Critical  |  ⚪ No Data")
+        
+        for row in range(5):
+            cols = st.columns(4)
+            for col_idx in range(4):
+                sensor_idx = row * 4 + col_idx
+                val = st.session_state.sensor_values[sensor_idx]
+                
+                with cols[col_idx]:
+                    if val > 0:
+                        if val >= 20:
+                            st.success(f"**S{sensor_idx+1}** 💧\n\n**{val:.1f}%**")
+                        elif val >= 10:
+                            st.warning(f"**S{sensor_idx+1}** ⚠️\n\n**{val:.1f}%**")
+                        else:
+                            st.error(f"**S{sensor_idx+1}** 🔴\n\n**{val:.1f}%**")
+                    else:
+                        st.info(f"**S{sensor_idx+1}** ○\n\n**{val:.1f}%**")
+        
+        st.caption(f"📅 Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        sensor_vals = [v for v in st.session_state.sensor_values if v > 0]
+        if sensor_vals:
+            st.markdown("##### Field Statistics")
+            st.metric("Average VWC", f"{sum(sensor_vals)/len(sensor_vals):.1f}%")
+            st.metric("Field Coverage", f"{len(sensor_vals)}/20 sensors")
+            
+            avg = sum(sensor_vals) / len(sensor_vals)
+            if avg < 15:
+                st.error("🔴 Critical: Immediate irrigation needed")
+            elif avg < 22:
+                st.warning("🟡 Low: Consider irrigation")
+            elif avg < 35:
+                st.success("🟢 Optimal: Good moisture level")
+            else:
+                st.info("🔵 High: Monitor drainage")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 2: DECISION ENGINE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab2:
+    st.subheader("🚀 Smart Irrigation Decision Engine")
+    st.caption("AI-powered decision system with EXECUTE/DEFER/SKIP logic")
+    
+    col1, col2 = st.columns([1, 2])
+    
+    with col1:
+        st.markdown("##### 📍 Location & Crop")
+        decision_state = st.selectbox("State", INDIAN_STATES, index=3, key="decision_state")
+        crop_type = st.selectbox("Crop Type", list(CROP_RULES.keys()), key="decision_crop")
+        days_after_sowing = st.slider("Days After Sowing", 1, 180, 60)
+        
+        st.markdown("##### 🌦️ Weather Conditions")
+        ambient_temp = st.slider("Ambient Temperature (°C)", 10, 50, 32)
+        humidity = st.slider("Relative Humidity (%)", 20, 100, 65)
+        forecast_rain = st.slider("Forecast Rain 24h (mm)", 0.0, 100.0, 2.5, 0.5)
+        rain_probability = st.slider("Rain Probability (%)", 0, 100, 25)
+        
+        st.markdown("##### ⚙️ Constraints")
+        equipment_available = st.checkbox("Equipment Available", value=True)
+        water_quota = st.number_input("Water Quota (mm)", value=100.0, min_value=0.0)
+    
+    with col2:
+        sensor_vals = [v for v in st.session_state.sensor_values if v > 0]
+        
+        if len(sensor_vals) < 5:
+            st.warning("⚠️ Please enter at least 5 sensor readings in the IoT Sensor Data tab")
+            avg_moisture = 22.0
+        else:
+            avg_moisture = sum(sensor_vals) / len(sensor_vals)
+            st.info(f"📡 Using {len(sensor_vals)} sensor readings | Average: {avg_moisture:.1f}%")
+        
+        if st.button("🚀 Run Irrigation Decision", type="primary", use_container_width=True):
+            with st.spinner("Processing environmental data and generating decision..."):
+                # Get crop rules
+                crop_rules = CROP_RULES.get(crop_type, {"sm_min": 20, "sm_max": 50})
+                optimal_sm = (crop_rules["sm_min"] + crop_rules["sm_max"]) / 2
+                
+                # Calculate irrigation need
+                moisture_deficit = optimal_sm - avg_moisture
+                evapotranspiration_factor = (ambient_temp / 30) * (1 - humidity / 100)
+                irrigation_score = moisture_deficit + (evapotranspiration_factor * 10)
+                
+                # Decision logic
+                if not equipment_available:
+                    action = "BLOCKED"
+                    reason = "Equipment not available"
+                    action_color = "error"
+                    volume = 0
+                elif rain_probability > 70 and forecast_rain > 10:
+                    action = "DEFER"
+                    reason = f"High rain probability ({rain_probability}%) with {forecast_rain}mm expected"
+                    action_color = "warning"
+                    volume = 0
+                elif avg_moisture < crop_rules["sm_min"] * 0.7:
+                    action = "EXECUTE"
+                    reason = f"Critical moisture deficit. Soil at {avg_moisture:.1f}%, need >{crop_rules['sm_min']}%"
+                    action_color = "error"
+                    volume = max(20, min(50, moisture_deficit * 2))
+                elif avg_moisture < crop_rules["sm_min"]:
+                    action = "EXECUTE"
+                    reason = f"Below optimal range. Current: {avg_moisture:.1f}%, Target: {crop_rules['sm_min']}-{crop_rules['sm_max']}%"
+                    action_color = "warning"
+                    volume = max(10, min(30, moisture_deficit * 1.5))
+                elif avg_moisture > crop_rules["sm_max"]:
+                    action = "SKIP"
+                    reason = f"Soil moisture above optimal ({avg_moisture:.1f}% > {crop_rules['sm_max']}%)"
+                    action_color = "info"
+                    volume = 0
+                else:
+                    action = "SKIP"
+                    reason = f"Soil moisture optimal ({avg_moisture:.1f}% in {crop_rules['sm_min']}-{crop_rules['sm_max']}%)"
+                    action_color = "success"
+                    volume = 0
+                
+                # Display Decision
+                st.markdown("### 📋 Irrigation Decision Report")
+                
+                if action_color == "error":
+                    st.error(f"🚨 **Action: {action}**")
+                elif action_color == "warning":
+                    st.warning(f"⚠️ **Action: {action}**")
+                elif action_color == "info":
+                    st.info(f"ℹ️ **Action: {action}**")
+                else:
+                    st.success(f"✅ **Action: {action}**")
+                
+                st.markdown(f"**Reason:** {reason}")
+                
+                # Metrics
+                metric_cols = st.columns(4)
+                with metric_cols[0]:
+                    st.metric("Soil Moisture", f"{avg_moisture:.1f}%")
+                with metric_cols[1]:
+                    st.metric("Target Range", f"{crop_rules['sm_min']}-{crop_rules['sm_max']}%")
+                with metric_cols[2]:
+                    st.metric("Irrigation Volume", f"{volume:.0f} mm" if volume > 0 else "None")
+                with metric_cols[3]:
+                    st.metric("Decision Score", f"{irrigation_score:.1f}")
+                
+                # Detailed Report
+                with st.expander("📊 Detailed Analysis", expanded=True):
+                    st.markdown(f"""
+                    **Environmental Conditions:**
+                    - 🌡️ Temperature: {ambient_temp}°C
+                    - 💧 Humidity: {humidity}%
+                    - 🌧️ Forecast Rain: {forecast_rain}mm ({rain_probability}% probability)
+                    - 🌱 Crop: {crop_type.title()} (Day {days_after_sowing})
+                    
+                    **Soil Analysis:**
+                    - 📊 Average Moisture: {avg_moisture:.1f}%
+                    - 📈 Optimal Range: {crop_rules['sm_min']}-{crop_rules['sm_max']}%
+                    - 📉 Moisture Deficit: {moisture_deficit:.1f}%
+                    - 🔥 ET Factor: {evapotranspiration_factor:.2f}
+                    
+                    **Constraints:**
+                    - ⚙️ Equipment: {'Available ✅' if equipment_available else 'Unavailable ❌'}
+                    - 💧 Water Quota: {water_quota}mm remaining
+                    """)
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# TAB 3: CROP RECOMMENDATIONS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab3:
     col1, col2 = st.columns([1, 1])
     
     with col1:
         st.subheader("📍 Location & Weather")
         
-        state = st.selectbox("State", INDIAN_STATES, index=3)  # Maharashtra default
-        district = st.text_input("District (optional)", placeholder="e.g., Pune")
+        state = st.selectbox("State", INDIAN_STATES, index=3, key="rec_state")  # Maharashtra default
+        district = st.text_input("District (optional)", placeholder="e.g., Pune", key="rec_district")
         
         # Weather fetch
         weather_col1, weather_col2 = st.columns(2)
         with weather_col1:
-            temperature = st.number_input("Temperature (°C)", value=28.0, min_value=0.0, max_value=50.0)
+            temperature = st.number_input("Temperature (°C)", value=28.0, min_value=0.0, max_value=50.0, key="rec_temp")
         with weather_col2:
-            if st.button("🌤️ Auto-fetch Weather"):
+            if st.button("🌤️ Auto-fetch Weather", key="rec_weather_btn"):
                 if st.session_state.weather_api_key:
                     city = district if district else state
                     weather = fetch_weather(city, st.session_state.weather_api_key)
@@ -589,10 +811,10 @@ with tab1:
                 st.warning("No suitable crops found for current conditions")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 2: AI CHATBOT
+# TAB 4: AI CHATBOT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab2:
+with tab4:
     # Dark themed chat wrapper
     st.markdown('<div class="chat-wrapper">', unsafe_allow_html=True)
     st.markdown('<div class="chat-header">🤖 AI Farming Assistant | Powered by Groq</div>', unsafe_allow_html=True)
@@ -682,10 +904,10 @@ with tab2:
         st.rerun()
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 3: DATA ANALYSIS
+# TAB 6: DATA ANALYSIS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab3:
+with tab6:
     st.subheader("📊 Sensor Data Analysis")
     
     sensor_vals = [v for v in st.session_state.sensor_values if v > 0]
@@ -737,6 +959,381 @@ with tab3:
         st.dataframe(sample_df[["Average"]], use_container_width=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# TAB 5: RAG KNOWLEDGE BASE
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab5:
+    st.subheader("📚 RAG Knowledge Base")
+    st.markdown("""
+    Upload agricultural documents to create a knowledge base. The system uses:
+    - **Semantic Search**: Find contextually similar content
+    - **Keyword Search (BM25)**: Match exact terms
+    - **Metadata Filtering**: Filter by state, crop, category
+    - **Hybrid Retrieval**: Combine methods for best results
+    """)
+    
+    # Initialize RAG session state
+    if 'rag_documents' not in st.session_state:
+        st.session_state.rag_documents = []
+    if 'rag_query_results' not in st.session_state:
+        st.session_state.rag_query_results = []
+    
+    rag_col1, rag_col2 = st.columns([1, 1])
+    
+    # ─────────────────────────────────────────────────────────────────────────────
+    # DOCUMENT UPLOAD
+    # ─────────────────────────────────────────────────────────────────────────────
+    
+    with rag_col1:
+        st.markdown("### 📤 Upload Documents")
+        
+        uploaded_file = st.file_uploader(
+            "Choose a file",
+            type=['txt', 'pdf', 'csv', 'json', 'md'],
+            help="Supported: TXT, PDF, CSV, JSON, Markdown"
+        )
+        
+        with st.expander("📋 Document Metadata (optional)", expanded=False):
+            doc_state = st.selectbox("State", [""] + INDIAN_STATES, key="doc_state")
+            doc_crop = st.text_input("Crop", placeholder="e.g., cotton, wheat, rice", key="doc_crop")
+            doc_category = st.selectbox(
+                "Category",
+                ["", "farming_guide", "irrigation", "pest_management", "fertilizer", "weather", "soil", "market", "other"],
+                key="doc_category"
+            )
+            doc_source = st.text_input("Source", placeholder="e.g., ICAR, KVK, University", key="doc_source")
+            doc_description = st.text_area("Description", placeholder="Brief description of the document", key="doc_desc")
+        
+        if st.button("📥 Upload & Process", use_container_width=True, disabled=not uploaded_file):
+            if uploaded_file:
+                with st.spinner("Processing document..."):
+                    try:
+                        # Try API first
+                        api_url = os.getenv("API_URL", "http://localhost:8000")
+                        
+                        files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                        data = {}
+                        if doc_state:
+                            data["state"] = doc_state
+                        if doc_crop:
+                            data["crop"] = doc_crop
+                        if doc_category:
+                            data["category"] = doc_category
+                        if doc_source:
+                            data["source"] = doc_source
+                        if doc_description:
+                            data["description"] = doc_description
+                        
+                        response = requests.post(
+                            f"{api_url}/rag/upload",
+                            files=files,
+                            data=data,
+                            timeout=60
+                        )
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            if result.get("success"):
+                                st.success(f"✅ Uploaded: {uploaded_file.name} ({result.get('num_chunks', 0)} chunks)")
+                                # Refresh document list
+                                st.session_state.rag_refresh = True
+                            else:
+                                st.error(f"❌ Error: {result.get('error', 'Unknown error')}")
+                        else:
+                            st.error(f"❌ API Error: {response.status_code}")
+                    
+                    except requests.exceptions.ConnectionError:
+                        st.warning("⚠️ API not available. Processing locally...")
+                        # Local processing fallback
+                        try:
+                            from api.rag_system import get_rag_system
+                            rag = get_rag_system()
+                            
+                            metadata = {}
+                            if doc_state:
+                                metadata["state"] = doc_state
+                            if doc_crop:
+                                metadata["crop"] = doc_crop
+                            if doc_category:
+                                metadata["category"] = doc_category
+                            if doc_source:
+                                metadata["source"] = doc_source
+                            if doc_description:
+                                metadata["description"] = doc_description
+                            
+                            doc = rag.add_document(
+                                filename=uploaded_file.name,
+                                content=uploaded_file.getvalue(),
+                                metadata=metadata
+                            )
+                            st.success(f"✅ Processed locally: {uploaded_file.name} ({len(doc.chunks)} chunks)")
+                            st.session_state.rag_refresh = True
+                        except Exception as e:
+                            st.error(f"❌ Local processing error: {e}")
+                    
+                    except Exception as e:
+                        st.error(f"❌ Upload error: {e}")
+        
+        # ─────────────────────────────────────────────────────────────────────────────
+        # DOCUMENT LIST
+        # ─────────────────────────────────────────────────────────────────────────────
+        
+        st.markdown("### 📑 Documents in Knowledge Base")
+        
+        # Fetch documents
+        try:
+            api_url = os.getenv("API_URL", "http://localhost:8000")
+            response = requests.get(f"{api_url}/rag/documents", timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                st.session_state.rag_documents = data.get("documents", [])
+        except:
+            # Try local
+            try:
+                from api.rag_system import get_rag_system
+                rag = get_rag_system()
+                st.session_state.rag_documents = rag.list_documents()
+            except:
+                pass
+        
+        if st.session_state.rag_documents:
+            for doc in st.session_state.rag_documents:
+                with st.container():
+                    col_a, col_b = st.columns([4, 1])
+                    with col_a:
+                        st.markdown(f"**📄 {doc.get('filename', 'Unknown')}**")
+                        st.caption(f"ID: {doc.get('id', 'N/A')} | Chunks: {doc.get('num_chunks', 0)} | Type: {doc.get('file_type', 'N/A')}")
+                        meta = doc.get('metadata', {})
+                        if meta:
+                            meta_str = " | ".join([f"{k}: {v}" for k, v in meta.items() if k != 'upload_date'])
+                            if meta_str:
+                                st.caption(f"📋 {meta_str}")
+                    with col_b:
+                        if st.button("🗑️", key=f"del_{doc.get('id')}", help="Delete document"):
+                            try:
+                                api_url = os.getenv("API_URL", "http://localhost:8000")
+                                requests.delete(f"{api_url}/rag/documents/{doc.get('id')}", timeout=5)
+                                st.rerun()
+                            except:
+                                try:
+                                    from api.rag_system import get_rag_system
+                                    rag = get_rag_system()
+                                    rag.delete_document(doc.get('id'))
+                                    st.rerun()
+                                except:
+                                    pass
+                    st.divider()
+        else:
+            st.info("📭 No documents uploaded yet. Upload your first document above!")
+    
+    # ─────────────────────────────────────────────────────────────────────────────
+    # RAG QUERY & CHAT
+    # ─────────────────────────────────────────────────────────────────────────────
+    
+    with rag_col2:
+        st.markdown("### 🔍 Query Knowledge Base")
+        
+        # Query options
+        with st.expander("⚙️ Query Settings", expanded=False):
+            retrieval_method = st.selectbox(
+                "Retrieval Method",
+                ["hybrid", "semantic", "keyword"],
+                help="hybrid combines semantic + keyword for best results"
+            )
+            
+            col_w1, col_w2 = st.columns(2)
+            with col_w1:
+                semantic_weight = st.slider("Semantic Weight", 0.0, 1.0, 0.5, 0.1)
+            with col_w2:
+                keyword_weight = st.slider("Keyword Weight", 0.0, 1.0, 0.5, 0.1)
+            
+            top_k = st.slider("Number of Results", 1, 10, 5)
+            
+            # Filters
+            st.markdown("**Filters:**")
+            filter_state = st.selectbox("Filter by State", [""] + INDIAN_STATES, key="filter_state")
+            filter_crop = st.text_input("Filter by Crop", placeholder="e.g., cotton", key="filter_crop")
+            filter_category = st.selectbox(
+                "Filter by Category",
+                ["", "farming_guide", "irrigation", "pest_management", "fertilizer", "weather", "soil", "market"],
+                key="filter_category"
+            )
+        
+        # Query input
+        rag_query = st.text_input("🔎 Enter your search query", placeholder="How to manage irrigation for cotton?")
+        
+        col_q1, col_q2 = st.columns(2)
+        with col_q1:
+            search_btn = st.button("🔍 Search Knowledge Base", use_container_width=True, disabled=not rag_query)
+        with col_q2:
+            chat_btn = st.button("💬 Ask with RAG Context", use_container_width=True, disabled=not rag_query)
+        
+        # Handle Search
+        if search_btn and rag_query:
+            with st.spinner("Searching..."):
+                try:
+                    api_url = os.getenv("API_URL", "http://localhost:8000")
+                    
+                    payload = {
+                        "query": rag_query,
+                        "top_k": top_k,
+                        "retrieval_method": retrieval_method,
+                        "semantic_weight": semantic_weight,
+                        "keyword_weight": keyword_weight
+                    }
+                    if filter_state:
+                        payload["state"] = filter_state
+                    if filter_crop:
+                        payload["crop"] = filter_crop
+                    if filter_category:
+                        payload["category"] = filter_category
+                    
+                    response = requests.post(f"{api_url}/rag/query", json=payload, timeout=30)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        st.session_state.rag_query_results = data.get("results", [])
+                    else:
+                        st.error(f"Search failed: {response.status_code}")
+                
+                except requests.exceptions.ConnectionError:
+                    # Local fallback
+                    try:
+                        from api.rag_system import get_rag_system
+                        rag = get_rag_system()
+                        
+                        filters = {}
+                        if filter_state:
+                            filters["state"] = filter_state
+                        if filter_crop:
+                            filters["crop"] = filter_crop
+                        if filter_category:
+                            filters["category"] = filter_category
+                        
+                        results = rag.query(
+                            query=rag_query,
+                            top_k=top_k,
+                            retrieval_method=retrieval_method,
+                            metadata_filters=filters if filters else None,
+                            semantic_weight=semantic_weight,
+                            keyword_weight=keyword_weight
+                        )
+                        st.session_state.rag_query_results = [r.to_dict() for r in results]
+                    except Exception as e:
+                        st.error(f"Local search error: {e}")
+                
+                except Exception as e:
+                    st.error(f"Search error: {e}")
+        
+        # Handle Chat with RAG
+        if chat_btn and rag_query:
+            with st.spinner("🤖 Getting RAG-enhanced response..."):
+                try:
+                    api_url = os.getenv("API_URL", "http://localhost:8000")
+                    
+                    payload = {
+                        "message": rag_query,
+                        "use_rag": True,
+                        "top_k": top_k,
+                        "api_key": st.session_state.get("grok_api_key")
+                    }
+                    if filter_state:
+                        payload["state"] = filter_state
+                    if filter_crop:
+                        payload["crop"] = filter_crop
+                    
+                    response = requests.post(f"{api_url}/rag/chat", json=payload, timeout=60)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data.get("success"):
+                            st.markdown("### 💬 RAG-Enhanced Response")
+                            st.markdown(data.get("response", "No response"))
+                            
+                            if data.get("sources"):
+                                with st.expander("📚 Sources Used", expanded=False):
+                                    for src in data["sources"]:
+                                        st.markdown(f"- **{src.get('filename')}** (score: {src.get('score', 0):.3f})")
+                        else:
+                            st.error(f"Error: {data.get('error', 'Unknown error')}")
+                    else:
+                        st.error(f"Chat failed: {response.status_code}")
+                
+                except requests.exceptions.ConnectionError:
+                    st.warning("⚠️ API not available. Using offline mode...")
+                    # Fallback to regular chat with context note
+                    if st.session_state.get("grok_api_key"):
+                        context = {"state": filter_state or "India", "rag_query": rag_query}
+                        response = call_grok_api(
+                            f"Based on agricultural knowledge, please answer: {rag_query}",
+                            context,
+                            st.session_state.grok_api_key
+                        )
+                        st.markdown("### 💬 Response (without RAG)")
+                        st.markdown(response)
+                    else:
+                        st.error("No API key available for chat")
+                
+                except Exception as e:
+                    st.error(f"Chat error: {e}")
+        
+        # Display Search Results
+        if st.session_state.rag_query_results:
+            st.markdown("### 📋 Search Results")
+            
+            for i, result in enumerate(st.session_state.rag_query_results):
+                with st.container():
+                    score = result.get("score", 0)
+                    score_color = "green" if score > 0.7 else "orange" if score > 0.4 else "red"
+                    
+                    st.markdown(f"**Result {i+1}** - Score: :{score_color}[{score:.3f}]")
+                    st.markdown(f"*Source: {result.get('metadata', {}).get('filename', 'Unknown')}*")
+                    
+                    # Truncate content for display
+                    content = result.get("content", "")
+                    if len(content) > 500:
+                        content = content[:500] + "..."
+                    
+                    st.markdown(f"```\n{content}\n```")
+                    
+                    meta = result.get("metadata", {})
+                    if meta:
+                        meta_items = [f"{k}: {v}" for k, v in meta.items() if k not in ['filename', 'upload_date'] and v]
+                        if meta_items:
+                            st.caption(" | ".join(meta_items[:3]))
+                    
+                    st.divider()
+        
+        # RAG Stats
+        st.markdown("### 📊 Knowledge Base Stats")
+        try:
+            api_url = os.getenv("API_URL", "http://localhost:8000")
+            response = requests.get(f"{api_url}/rag/stats", timeout=5)
+            if response.status_code == 200:
+                stats = response.json()
+                stat_col1, stat_col2, stat_col3 = st.columns(3)
+                with stat_col1:
+                    st.metric("Documents", stats.get("total_documents", 0))
+                with stat_col2:
+                    st.metric("Chunks", stats.get("total_chunks", 0))
+                with stat_col3:
+                    st.metric("Vocab Size", stats.get("vocabulary_size", 0))
+        except:
+            try:
+                from api.rag_system import get_rag_system
+                rag = get_rag_system()
+                stats = rag.get_stats()
+                stat_col1, stat_col2, stat_col3 = st.columns(3)
+                with stat_col1:
+                    st.metric("Documents", stats.get("total_documents", 0))
+                with stat_col2:
+                    st.metric("Chunks", stats.get("total_chunks", 0))
+                with stat_col3:
+                    st.metric("Vocab Size", stats.get("vocabulary_size", 0))
+            except:
+                st.info("📊 Stats unavailable")
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # FOOTER
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -744,6 +1341,6 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666;">
     <p>🌾 India Crop Recommendation System v2.0 | Streamlit Edition</p>
-    <p>Built for Indian Agriculture 🇮🇳 | 20 Sensor Inputs | Grok AI Chatbot</p>
+    <p>Built for Indian Agriculture 🇮🇳 | 20 Sensor Inputs | RAG Knowledge Base | Grok AI Chatbot</p>
 </div>
 """, unsafe_allow_html=True)

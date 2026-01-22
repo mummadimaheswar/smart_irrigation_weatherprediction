@@ -527,6 +527,337 @@ async def get_chat_history():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# RAG SYSTEM ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+from .rag_system import get_rag_system, RAGSystem
+from fastapi import UploadFile, File, Form
+
+
+class RAGUploadResponse(BaseModel):
+    success: bool
+    document_id: Optional[str] = None
+    filename: str
+    num_chunks: int = 0
+    message: str
+    error: Optional[str] = None
+
+
+class RAGQueryRequest(BaseModel):
+    query: str = Field(..., description="Search query", examples=["How to irrigate cotton?"])
+    top_k: int = Field(default=5, ge=1, le=20, description="Number of results")
+    retrieval_method: str = Field(default="hybrid", description="Method: semantic, keyword, or hybrid")
+    semantic_weight: float = Field(default=0.5, ge=0, le=1, description="Weight for semantic search")
+    keyword_weight: float = Field(default=0.5, ge=0, le=1, description="Weight for keyword search")
+    # Metadata filters
+    state: Optional[str] = Field(default=None, description="Filter by state")
+    crop: Optional[str] = Field(default=None, description="Filter by crop")
+    category: Optional[str] = Field(default=None, description="Filter by category")
+    date_from: Optional[str] = Field(default=None, description="Filter from date (YYYY-MM-DD)")
+    date_to: Optional[str] = Field(default=None, description="Filter to date (YYYY-MM-DD)")
+
+
+class RAGQueryResult(BaseModel):
+    chunk_id: str
+    document_id: str
+    content: str
+    score: float
+    retrieval_method: str
+    metadata: Dict[str, Any]
+
+
+class RAGQueryResponse(BaseModel):
+    success: bool
+    query: str
+    results: List[RAGQueryResult]
+    total_results: int
+    message: Optional[str] = None
+
+
+class RAGChatRequest(BaseModel):
+    message: str = Field(..., description="User message/question")
+    use_rag: bool = Field(default=True, description="Whether to use RAG context")
+    top_k: int = Field(default=5, description="Number of RAG results for context")
+    # Context from user
+    state: Optional[str] = None
+    crop: Optional[str] = None
+    # API key
+    api_key: Optional[str] = Field(default=None, description="Grok/Groq API key")
+
+
+class RAGChatResponse(BaseModel):
+    success: bool
+    response: Optional[str] = None
+    rag_context_used: bool = False
+    sources: List[Dict[str, Any]] = []
+    error: Optional[str] = None
+
+
+@app.post("/rag/upload", response_model=RAGUploadResponse, tags=["RAG"])
+async def upload_document(
+    file: UploadFile = File(...),
+    state: Optional[str] = Form(default=None),
+    crop: Optional[str] = Form(default=None),
+    category: Optional[str] = Form(default=None),
+    source: Optional[str] = Form(default=None),
+    description: Optional[str] = Form(default=None)
+):
+    """
+    Upload a document to the RAG knowledge base.
+    
+    Supported formats: PDF, TXT, CSV, JSON, Markdown
+    
+    The document will be:
+    1. Processed and text extracted
+    2. Chunked into smaller segments
+    3. Embedded for semantic search
+    4. Indexed for keyword search
+    
+    Add metadata (state, crop, category) to enable filtering in queries.
+    """
+    try:
+        rag = get_rag_system()
+        
+        # Read file content
+        content = await file.read()
+        
+        # Build metadata
+        metadata = {}
+        if state:
+            metadata["state"] = state
+        if crop:
+            metadata["crop"] = crop
+        if category:
+            metadata["category"] = category
+        if source:
+            metadata["source"] = source
+        if description:
+            metadata["description"] = description
+        
+        # Add document
+        doc = rag.add_document(
+            filename=file.filename,
+            content=content,
+            metadata=metadata
+        )
+        
+        return RAGUploadResponse(
+            success=True,
+            document_id=doc.id,
+            filename=file.filename,
+            num_chunks=len(doc.chunks),
+            message=f"Document uploaded successfully with {len(doc.chunks)} chunks"
+        )
+        
+    except Exception as e:
+        log.error(f"RAG upload error: {e}")
+        return RAGUploadResponse(
+            success=False,
+            filename=file.filename if file else "unknown",
+            message="Upload failed",
+            error=str(e)
+        )
+
+
+@app.post("/rag/query", response_model=RAGQueryResponse, tags=["RAG"])
+async def query_rag(request: RAGQueryRequest):
+    """
+    Query the RAG knowledge base.
+    
+    Retrieval methods:
+    - **semantic**: Uses embeddings for meaning-based search
+    - **keyword**: Uses BM25 for exact keyword matching
+    - **hybrid**: Combines both methods (recommended)
+    
+    Metadata filters can be applied to narrow results by state, crop, category, or date range.
+    """
+    try:
+        rag = get_rag_system()
+        
+        # Build metadata filters
+        filters = {}
+        if request.state:
+            filters["state"] = request.state
+        if request.crop:
+            filters["crop"] = request.crop
+        if request.category:
+            filters["category"] = request.category
+        if request.date_from:
+            filters["date_from"] = request.date_from
+        if request.date_to:
+            filters["date_to"] = request.date_to
+        
+        # Query
+        results = rag.query(
+            query=request.query,
+            top_k=request.top_k,
+            retrieval_method=request.retrieval_method,
+            metadata_filters=filters if filters else None,
+            semantic_weight=request.semantic_weight,
+            keyword_weight=request.keyword_weight
+        )
+        
+        # Convert results
+        query_results = [
+            RAGQueryResult(
+                chunk_id=r.chunk.id,
+                document_id=r.chunk.document_id,
+                content=r.chunk.content,
+                score=r.score,
+                retrieval_method=r.retrieval_method,
+                metadata=r.chunk.metadata
+            )
+            for r in results
+        ]
+        
+        return RAGQueryResponse(
+            success=True,
+            query=request.query,
+            results=query_results,
+            total_results=len(query_results)
+        )
+        
+    except Exception as e:
+        log.error(f"RAG query error: {e}")
+        return RAGQueryResponse(
+            success=False,
+            query=request.query,
+            results=[],
+            total_results=0,
+            message=str(e)
+        )
+
+
+@app.post("/rag/chat", response_model=RAGChatResponse, tags=["RAG"])
+async def rag_chat(request: RAGChatRequest):
+    """
+    Chat with RAG-enhanced responses.
+    
+    This endpoint:
+    1. Retrieves relevant context from the knowledge base
+    2. Augments the prompt with this context
+    3. Sends to LLM (Grok/Groq) for a grounded response
+    
+    The response will cite sources from the knowledge base when available.
+    """
+    try:
+        rag = get_rag_system()
+        chatbot = get_chatbot(api_key=request.api_key)
+        
+        rag_context = ""
+        sources = []
+        
+        if request.use_rag:
+            # Build filters from context
+            filters = {}
+            if request.state:
+                filters["state"] = request.state
+            if request.crop:
+                filters["crop"] = request.crop
+            
+            # Get RAG context
+            rag_context = rag.get_context_for_llm(
+                query=request.message,
+                top_k=request.top_k,
+                metadata_filters=filters if filters else None
+            )
+            
+            # Get sources for citation
+            results = rag.query(
+                query=request.message,
+                top_k=request.top_k,
+                metadata_filters=filters if filters else None
+            )
+            sources = [
+                {
+                    "filename": r.chunk.metadata.get("filename", "unknown"),
+                    "chunk_id": r.chunk.id,
+                    "score": round(r.score, 3)
+                }
+                for r in results
+            ]
+        
+        # Build context for LLM
+        context = {}
+        if request.state:
+            context["state"] = request.state
+        if request.crop:
+            context["crop"] = request.crop
+        
+        # Add RAG context to the message
+        if rag_context:
+            augmented_message = f"""Based on the following knowledge base context, please answer the user's question.
+
+KNOWLEDGE BASE CONTEXT:
+{rag_context}
+
+USER QUESTION: {request.message}
+
+Please provide a helpful, accurate response based on the context provided. If the context doesn't contain relevant information, you can use your general knowledge but mention that."""
+        else:
+            augmented_message = request.message
+        
+        # Get LLM response
+        result = await chatbot.chat_async(augmented_message, context if context else None)
+        
+        return RAGChatResponse(
+            success=result["success"],
+            response=result.get("response"),
+            rag_context_used=bool(rag_context),
+            sources=sources,
+            error=result.get("error")
+        )
+        
+    except Exception as e:
+        log.error(f"RAG chat error: {e}")
+        return RAGChatResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@app.get("/rag/documents", tags=["RAG"])
+async def list_rag_documents():
+    """List all documents in the RAG knowledge base."""
+    try:
+        rag = get_rag_system()
+        documents = rag.list_documents()
+        return {
+            "success": True,
+            "documents": documents,
+            "total": len(documents)
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "documents": [], "total": 0}
+
+
+@app.delete("/rag/documents/{doc_id}", tags=["RAG"])
+async def delete_rag_document(doc_id: str):
+    """Delete a document from the RAG knowledge base."""
+    try:
+        rag = get_rag_system()
+        success = rag.delete_document(doc_id)
+        
+        if success:
+            return {"success": True, "message": f"Document {doc_id} deleted"}
+        else:
+            return {"success": False, "message": f"Document {doc_id} not found"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/rag/stats", tags=["RAG"])
+async def get_rag_stats():
+    """Get RAG system statistics."""
+    try:
+        rag = get_rag_system()
+        stats = rag.get_stats()
+        return {"success": True, **stats}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 
