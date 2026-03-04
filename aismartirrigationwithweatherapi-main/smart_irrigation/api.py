@@ -13,6 +13,7 @@ from .decision import decide_irrigation, compute_crop_etc
 from .weather import fetch_openweather, get_forecast_summary
 from .et import compute_et0
 from .ingest import GEO_COORDS
+from .db import init_db, log_irrigation_request
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -22,6 +23,16 @@ app = FastAPI(
     description="AI-powered irrigation recommendations for Indian agriculture",
     version="1.0.0"
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize PostgreSQL tables on server start."""
+    try:
+        init_db()
+        log.info("PostgreSQL database initialized.")
+    except Exception as exc:
+        log.warning("PostgreSQL not available – logging disabled: %s", exc)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MODELS
@@ -177,17 +188,40 @@ async def get_recommendation(request: IrrigationRequest):
     # Confidence based on data quality
     confidence = 0.85 if rain < 50 else 0.7
     
+    response_details = {
+        **details,
+        "rain_24h_mm": rain,
+        "temp_avg_c": forecast["avg_temp_c"],
+        "location": {"lat": loc.lat, "lon": loc.lon}
+    }
+
+    # ── Persist request + response to PostgreSQL ────────────────────────────
+    log_irrigation_request(
+        lat=loc.lat,
+        lon=loc.lon,
+        state=loc.state,
+        district=loc.district,
+        soil_moisture=sensor.soil_moisture,
+        soil_type=sensor.soil_type,
+        crop_type=crop.crop_type,
+        growth_stage=crop.growth_stage,
+        days_after_sowing=crop.days_after_sowing,
+        decision=decision,
+        reason=reason,
+        advisory=advisory,
+        confidence=confidence,
+        rain_24h_mm=rain,
+        temp_avg_c=forecast["avg_temp_c"],
+        et0_mm_day=et0,
+        details=response_details,
+    )
+
     return {
         "decision": decision,
         "reason": reason,
         "advisory": advisory,
         "confidence": confidence,
-        "details": {
-            **details,
-            "rain_24h_mm": rain,
-            "temp_avg_c": forecast["avg_temp_c"],
-            "location": {"lat": loc.lat, "lon": loc.lon}
-        },
+        "details": response_details,
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 

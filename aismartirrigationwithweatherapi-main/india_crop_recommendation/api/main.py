@@ -2,10 +2,13 @@
 FastAPI Application for Crop Recommendation
 India Crop Recommendation System
 
+Database: postgresql://postgres:root@localhost:5432/smartirrigationweatherapi
+
 PROMPT 8: REST API with:
 - POST /recommend - crop recommendations
 - GET /status - health check
 - Pydantic models for request/response
+- SQLAlchemy DB integration for soil moisture & predictions
 """
 import os
 import logging
@@ -13,10 +16,26 @@ from datetime import datetime, date
 from typing import List, Optional, Dict, Any, Union
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from contextlib import asynccontextmanager
 import uvicorn
+
+# Database imports
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from india_crop_recommendation.database import get_db, init_db, engine
+from india_crop_recommendation.models import (
+    SoilMoistureReading, IrrigationLog, WeatherDaily,
+    CropStatistic, ModelPrediction, RefState, RefDistrict,
+)
+from india_crop_recommendation.pydantic_schemas import (
+    SoilMoistureRead, SoilMoistureFilter, SoilMoistureSummary,
+    IrrigationLogRead, CSVIngestionResult,
+)
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -132,6 +151,18 @@ class WeatherResponse(BaseModel):
 # APPLICATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup: create DB tables; Shutdown: nothing special."""
+    try:
+        init_db()
+        log.info("PostgreSQL database (smartirrigationweatherapi) initialized.")
+    except Exception as exc:
+        log.warning("PostgreSQL not available – DB features disabled: %s", exc)
+    yield
+
+
 app = FastAPI(
     title="India Crop Recommendation API",
     description="""
@@ -141,14 +172,17 @@ app = FastAPI(
     - Get personalized crop recommendations based on location, soil, and weather
     - Supports all Indian states
     - Multiple model options (rule-based and ML)
+    - PostgreSQL database (smartirrigationweatherapi) for soil moisture, weather, predictions
     
     ## Usage
     1. Call `/recommend` with your location and conditions
     2. Receive top 3 crop recommendations with confidence scores
+    3. Use `/db/soil-moisture` to query ingested CSV data from the database
     """,
     version=API_VERSION,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS
@@ -339,7 +373,11 @@ async def recommend_crops(request: RecommendRequest):
         )
     
     # Get date info
-    target_date = request.date or date.today()
+    target_date = (
+        datetime.strptime(request.planting_date, "%Y-%m-%d").date()
+        if request.planting_date
+        else date.today()
+    )
     month = target_date.month
     
     # Use provided values or defaults
@@ -635,8 +673,9 @@ async def upload_document(
             metadata["description"] = description
         
         # Add document
+        fname = file.filename or "unknown"
         doc = rag.add_document(
-            filename=file.filename,
+            filename=fname,
             content=content,
             metadata=metadata
         )
@@ -644,7 +683,7 @@ async def upload_document(
         return RAGUploadResponse(
             success=True,
             document_id=doc.id,
-            filename=file.filename,
+            filename=fname,
             num_chunks=len(doc.chunks),
             message=f"Document uploaded successfully with {len(doc.chunks)} chunks"
         )
@@ -653,7 +692,7 @@ async def upload_document(
         log.error(f"RAG upload error: {e}")
         return RAGUploadResponse(
             success=False,
-            filename=file.filename if file else "unknown",
+            filename=file.filename or "unknown" if file else "unknown",
             message="Upload failed",
             error=str(e)
         )
@@ -855,6 +894,152 @@ async def get_rag_stats():
         return {"success": True, **stats}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DATABASE ENDPOINTS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.get("/db/soil-moisture", response_model=List[SoilMoistureRead], tags=["Database"])
+async def get_soil_moisture(
+    state: Optional[str] = Query(None, description="Filter by state name"),
+    district: Optional[str] = Query(None, description="Filter by district"),
+    date_from: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+    limit: int = Query(100, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Query soil moisture readings from the database (loaded from CSV files)."""
+    q = db.query(SoilMoistureReading)
+    if state:
+        q = q.filter(SoilMoistureReading.state.ilike(f"%{state}%"))
+    if district:
+        q = q.filter(SoilMoistureReading.district.ilike(f"%{district}%"))
+    if date_from:
+        q = q.filter(SoilMoistureReading.date >= date_from)
+    if date_to:
+        q = q.filter(SoilMoistureReading.date <= date_to)
+    return q.order_by(SoilMoistureReading.date.desc()).offset(offset).limit(limit).all()
+
+
+@app.get("/db/soil-moisture/summary", response_model=List[SoilMoistureSummary], tags=["Database"])
+async def soil_moisture_summary(
+    db: Session = Depends(get_db),
+):
+    """Aggregated soil moisture stats per state."""
+    rows = (
+        db.query(
+            SoilMoistureReading.state,
+            func.count().label("record_count"),
+            func.avg(SoilMoistureReading.soil_moisture_pct).label("mean_moisture_pct"),
+            func.min(SoilMoistureReading.soil_moisture_pct).label("min_moisture_pct"),
+            func.max(SoilMoistureReading.soil_moisture_pct).label("max_moisture_pct"),
+            func.min(SoilMoistureReading.date).label("date_range_start"),
+            func.max(SoilMoistureReading.date).label("date_range_end"),
+        )
+        .group_by(SoilMoistureReading.state)
+        .all()
+    )
+    return [
+        SoilMoistureSummary(
+            state=r.state,
+            record_count=r.record_count,
+            mean_moisture_pct=round(float(r.mean_moisture_pct), 2) if r.mean_moisture_pct else None,
+            min_moisture_pct=round(float(r.min_moisture_pct), 2) if r.min_moisture_pct else None,
+            max_moisture_pct=round(float(r.max_moisture_pct), 2) if r.max_moisture_pct else None,
+            date_range_start=r.date_range_start,
+            date_range_end=r.date_range_end,
+        )
+        for r in rows
+    ]
+
+
+@app.get("/db/soil-moisture/districts/{state}", tags=["Database"])
+async def soil_moisture_districts(
+    state: str,
+    db: Session = Depends(get_db),
+):
+    """Get soil moisture statistics per district for a given state."""
+    rows = (
+        db.query(
+            SoilMoistureReading.district,
+            func.count().label("count"),
+            func.avg(SoilMoistureReading.soil_moisture_pct).label("mean_pct"),
+            func.min(SoilMoistureReading.soil_moisture_pct).label("min_pct"),
+            func.max(SoilMoistureReading.soil_moisture_pct).label("max_pct"),
+        )
+        .filter(SoilMoistureReading.state.ilike(f"%{state}%"))
+        .group_by(SoilMoistureReading.district)
+        .all()
+    )
+    return [
+        {
+            "district": r.district,
+            "count": r.count,
+            "mean_moisture_pct": round(float(r.mean_pct), 2) if r.mean_pct else None,
+            "min_moisture_pct": round(float(r.min_pct), 2) if r.min_pct else None,
+            "max_moisture_pct": round(float(r.max_pct), 2) if r.max_pct else None,
+        }
+        for r in rows
+    ]
+
+
+@app.get("/db/states", tags=["Database"])
+async def list_db_states(db: Session = Depends(get_db)):
+    """List all states in the ref_states table."""
+    return db.query(RefState).all()
+
+
+@app.get("/db/districts/{state}", tags=["Database"])
+async def list_db_districts(state: str, db: Session = Depends(get_db)):
+    """List all districts for a state from the ref_districts table."""
+    return (
+        db.query(RefDistrict)
+        .filter(RefDistrict.state_name.ilike(f"%{state}%"))
+        .all()
+    )
+
+
+@app.get("/db/irrigation-logs", response_model=List[IrrigationLogRead], tags=["Database"])
+async def get_irrigation_logs(
+    limit: int = Query(50, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    """Retrieve recent irrigation decision logs."""
+    return (
+        db.query(IrrigationLog)
+        .order_by(IrrigationLog.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+@app.post("/db/load-csv", response_model=CSVIngestionResult, tags=["Database"])
+async def load_csv_endpoint():
+    """Trigger CSV-to-database ingestion of all state soil moisture CSVs."""
+    try:
+        from india_crop_recommendation.load_csv_to_db import load_csv_to_db
+        result = load_csv_to_db()
+        if result:
+            return CSVIngestionResult(**result)
+        raise HTTPException(500, "Ingestion returned no result")
+    except Exception as exc:
+        raise HTTPException(500, f"CSV ingestion failed: {exc}")
+
+
+@app.get("/db/record-counts", tags=["Database"])
+async def record_counts(db: Session = Depends(get_db)):
+    """Get row counts for all major tables."""
+    return {
+        "soil_moisture_readings": db.query(func.count(SoilMoistureReading.id)).scalar(),
+        "irrigation_logs": db.query(func.count(IrrigationLog.id)).scalar(),
+        "weather_daily": db.query(func.count(WeatherDaily.id)).scalar(),
+        "crop_statistics": db.query(func.count(CropStatistic.id)).scalar(),
+        "model_predictions": db.query(func.count(ModelPrediction.id)).scalar(),
+        "ref_states": db.query(func.count(RefState.id)).scalar(),
+        "ref_districts": db.query(func.count(RefDistrict.id)).scalar(),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

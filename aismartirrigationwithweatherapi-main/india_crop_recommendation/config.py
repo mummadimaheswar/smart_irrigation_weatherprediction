@@ -104,9 +104,9 @@ NASA_EARTHDATA_TOKEN = os.getenv("NASA_EARTHDATA_TOKEN", "")
 class PostgresConfig:
     host: str = os.getenv("POSTGRES_HOST", "localhost")
     port: int = int(os.getenv("POSTGRES_PORT", "5432"))
-    database: str = os.getenv("POSTGRES_DB", "india_crops")
+    database: str = os.getenv("POSTGRES_DB", "smartirrigationweatherapi")
     user: str = os.getenv("POSTGRES_USER", "postgres")
-    password: str = os.getenv("POSTGRES_PASSWORD", "")
+    password: str = os.getenv("POSTGRES_PASSWORD", "root")
     
     @property
     def connection_string(self) -> str:

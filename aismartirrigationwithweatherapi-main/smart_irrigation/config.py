@@ -158,6 +158,23 @@ class ModelConfig:
 MODEL = ModelConfig()
 
 # ─────────────────────────────────────────────────────────────────────────────
+# DATABASE CONFIG
+# ─────────────────────────────────────────────────────────────────────────────
+import os
+
+@dataclass
+class DBConfig:
+    postgres_uri: str = os.getenv(
+        "DATABASE_URL",
+        "postgresql://postgres:root@localhost:5432/smartirrigationweatherapi",
+    )
+    pool_size: int = 5
+    max_overflow: int = 10
+    echo_sql: bool = False  # set True for SQL debug logging
+
+DB = DBConfig()
+
+# ─────────────────────────────────────────────────────────────────────────────
 # API CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 @dataclass
