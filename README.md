@@ -73,7 +73,7 @@ Lower irrigation costs
 Better resource management
 ⚙️ Installation
 Clone Repository
-git clone https://github.com/yourusername/smart-irrigation-weather-prediction.git
+git clone git clone https://github.com/mummadimaheswar/aismartirrigationwithweatherapi.git
 Move to Project Directory
 cd smart-irrigation-weather-prediction
 Install Dependencies
